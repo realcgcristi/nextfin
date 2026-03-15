@@ -41,12 +41,6 @@ that is the main install path right now
 
 ![nextfin screenshot 3](https://cdn.getswift.cloud/ayrou)
 
-![nextfin screenshot 4](https://cdn.getswift.cloud/4kb6l)
-
-![nextfin screenshot 5](https://cdn.getswift.cloud/6asae)
-
-![nextfin screenshot 6](https://cdn.getswift.cloud/f5ki3)
-
 ## repo layout
 
 - `lib/core` app wiring api routing theme storage and compatibility bits
