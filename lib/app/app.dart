@@ -21,40 +21,87 @@ class NextfinApp extends ConsumerWidget {
       theme: buildNextfinTheme(
         Brightness.light,
         palette: sett.themePalette,
+        density: sett.layoutDensity,
       ),
       darkTheme: buildNextfinTheme(
         Brightness.dark,
         palette: sett.themePalette,
+        density: sett.layoutDensity,
       ),
       builder: (BuildContext context, Widget? child) {
         final mood = themeMoodOf(context);
         return DecoratedBox(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: <Color>[mood.appBackgroundTop, mood.appBackgroundBottom],
+            gradient: RadialGradient(
+              center: const Alignment(-0.78, -0.88),
+              radius: 1.6,
+              colors: <Color>[
+                Color.alphaBlend(
+                  mood.appGlow.withValues(alpha: 0.22),
+                  mood.appBackgroundTop,
+                ),
+                mood.appBackgroundTop,
+                mood.appBackgroundBottom,
+              ],
+              stops: const <double>[0, 0.42, 1],
             ),
           ),
           child: Stack(
             fit: StackFit.expand,
             children: <Widget>[
               Positioned(
-                top: -80,
-                right: -30,
+                top: -110,
+                left: -40,
                 child: IgnorePointer(
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       boxShadow: <BoxShadow>[
                         BoxShadow(
-                          color: mood.appGlow,
-                          blurRadius: 120,
-                          spreadRadius: 24,
+                          color: mood.appGlow.withValues(alpha: 0.9),
+                          blurRadius: 180,
+                          spreadRadius: 42,
                         ),
                       ],
                     ),
-                    child: const SizedBox(width: 180, height: 180),
+                    child: const SizedBox(width: 260, height: 260),
+                  ),
+                ),
+              ),
+              Positioned(
+                right: -90,
+                top: 120,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: <BoxShadow>[
+                        BoxShadow(
+                          color: mood.appGlow.withValues(alpha: 0.52),
+                          blurRadius: 200,
+                          spreadRadius: 44,
+                        ),
+                      ],
+                    ),
+                    child: const SizedBox(width: 240, height: 240),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: <Color>[
+                          Colors.transparent,
+                          Colors.transparent,
+                          mood.appBackgroundBottom.withValues(alpha: 0.42),
+                        ],
+                        stops: const <double>[0, 0.62, 1],
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -80,6 +127,7 @@ class NextfinBootstrapFailureApp extends StatelessWidget {
       theme: buildNextfinTheme(
         Brightness.dark,
         palette: AppThemePalette.nextfin,
+        density: LayoutDensity.comfortable,
       ),
       home: Scaffold(
         body: Center(

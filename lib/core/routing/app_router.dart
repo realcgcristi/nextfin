@@ -3,14 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/application/session_controller.dart';
-import '../../features/auth/presentation/login_screen.dart';
+import '../../features/auth/presentation/login_flow_screen.dart';
 import '../../features/details/presentation/details_screen.dart';
-import '../../features/home/presentation/home_screen.dart';
-import '../../features/libraries/presentation/library_screen.dart';
+import '../../features/downloads/presentation/downloads_screen.dart';
+import '../../features/home/presentation/home_editorial_screen.dart';
+import '../../features/history/presentation/history_screen.dart';
+import '../../features/libraries/presentation/libraries_explorer_screen.dart';
 import '../../features/player/presentation/player_screen.dart';
-import '../../features/search/presentation/search_screen.dart';
-import '../../features/settings/presentation/settings_screen.dart';
-import '../../features/settings/presentation/themes_screen.dart';
+import '../../features/search/presentation/search_canvas_screen.dart';
+import '../../features/settings/presentation/settings_hub_screen.dart';
+import '../../features/settings/presentation/themes_studio_screen.dart';
 import '../../features/startup/presentation/startup_screen.dart';
 import '../../shared/widgets/app_shell.dart';
 
@@ -48,7 +50,8 @@ final appRouterProvider = Provider<GoRouter>((Ref ref) {
       GoRoute(
         path: '/login',
         builder:
-            (BuildContext context, GoRouterState state) => const LoginScreen(),
+            (BuildContext context, GoRouterState state) =>
+                const LoginFlowScreen(),
       ),
       StatefulShellRoute.indexedStack(
         builder: (
@@ -65,7 +68,7 @@ final appRouterProvider = Provider<GoRouter>((Ref ref) {
                 path: '/home',
                 builder:
                     (BuildContext context, GoRouterState state) =>
-                        const HomeScreen(),
+                        const HomeEditorialScreen(),
               ),
             ],
           ),
@@ -75,7 +78,7 @@ final appRouterProvider = Provider<GoRouter>((Ref ref) {
                 path: '/libraries',
                 builder:
                     (BuildContext context, GoRouterState state) =>
-                        const LibraryScreen(),
+                        const LibrariesExplorerScreen(),
               ),
             ],
           ),
@@ -85,7 +88,7 @@ final appRouterProvider = Provider<GoRouter>((Ref ref) {
                 path: '/search',
                 builder:
                     (BuildContext context, GoRouterState state) =>
-                        const SearchScreen(),
+                        const SearchCanvasScreen(),
               ),
             ],
           ),
@@ -95,7 +98,7 @@ final appRouterProvider = Provider<GoRouter>((Ref ref) {
                 path: '/settings',
                 builder:
                     (BuildContext context, GoRouterState state) =>
-                        const SettingsScreen(),
+                        const SettingsHubScreen(),
               ),
             ],
           ),
@@ -113,6 +116,7 @@ final appRouterProvider = Provider<GoRouter>((Ref ref) {
             (BuildContext context, GoRouterState state) => PlayerScreen(
               itemId: state.pathParameters['id'] ?? '',
               title: state.uri.queryParameters['title'] ?? 'Playback',
+              filePath: state.uri.queryParameters['filePath'],
               initialPositionTicks:
                   int.tryParse(state.uri.queryParameters['startTicks'] ?? '') ??
                   0,
@@ -120,28 +124,21 @@ final appRouterProvider = Provider<GoRouter>((Ref ref) {
       ),
       GoRoute(
         path: '/themes',
-        pageBuilder:
-            (BuildContext context, GoRouterState state) => CustomTransitionPage(
-              key: state.pageKey,
-              transitionDuration: const Duration(milliseconds: 240),
-              child: const ThemesScreen(),
-              transitionsBuilder:
-                  (
-                    BuildContext context,
-                    Animation<double> animation,
-                    Animation<double> secondaryAnimation,
-                    Widget child,
-                  ) => FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0.04, 0),
-                        end: Offset.zero,
-                      ).animate(animation),
-                      child: child,
-                    ),
-                  ),
-            ),
+        builder:
+            (BuildContext context, GoRouterState state) =>
+                const ThemesStudioScreen(),
+      ),
+      GoRoute(
+        path: '/history',
+        builder:
+            (BuildContext context, GoRouterState state) =>
+                const HistoryScreen(),
+      ),
+      GoRoute(
+        path: '/downloads',
+        builder:
+            (BuildContext context, GoRouterState state) =>
+                const DownloadsScreen(),
       ),
     ],
   );

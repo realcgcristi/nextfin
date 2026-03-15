@@ -32,6 +32,7 @@ class MainActivity : FlutterActivity() {
     private var playbackActive = false
     private var autoEnterPip = true
     private var playbackAspectRatio = Rational(16, 9)
+    private var playerScreenActive = false
 
     private val playbackReceiver =
         object : BroadcastReceiver() {
@@ -76,6 +77,11 @@ class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
 
+                "setPlayerScreenActive" -> {
+                    playerScreenActive = call.argument<Boolean>("active") == true
+                    result.success(null)
+                }
+
                 "clearMediaSession" -> {
                     clearPlaybackSession()
                     result.success(null)
@@ -113,7 +119,11 @@ class MainActivity : FlutterActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (playbackActive && autoEnterPip && !isInPictureInPictureMode && supportsPip()) {
+        if (playbackActive &&
+            playerScreenActive &&
+            autoEnterPip &&
+            !isInPictureInPictureMode &&
+            supportsPip()) {
             enterPip(playbackAspectRatio.numerator, playbackAspectRatio.denominator)
         }
     }
@@ -220,6 +230,7 @@ class MainActivity : FlutterActivity() {
     private fun clearPlaybackSession() {
         playbackActive = false
         autoEnterPip = true
+        playerScreenActive = false
         NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID)
         mediaSession?.isActive = false
         mediaSession?.release()

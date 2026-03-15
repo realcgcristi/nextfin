@@ -45,6 +45,9 @@ class PlaybackMediaSource {
     required this.protocol,
     required this.name,
     required this.path,
+    required this.liveStreamId,
+    required this.isInfiniteStream,
+    required this.requiredHttpHeaders,
     required this.supportsDirectPlay,
     required this.supportsDirectStream,
     required this.supportsTranscoding,
@@ -58,12 +61,25 @@ class PlaybackMediaSource {
   final String? protocol;
   final String? name;
   final String? path;
+  final String? liveStreamId;
+  final bool isInfiniteStream;
+  final Map<String, String> requiredHttpHeaders;
   final bool supportsDirectPlay;
   final bool supportsDirectStream;
   final bool supportsTranscoding;
   final String? transcodingUrl;
   final String? directStreamUrl;
   final List<MediaStreamInfo> mediaStreams;
+
+  bool get isLiveTvLike {
+    final lowerPath = (path ?? '').toLowerCase();
+    final lowerName = (name ?? '').toLowerCase();
+    return isInfiniteStream ||
+        (liveStreamId?.isNotEmpty ?? false) ||
+        lowerPath.contains('livetv') ||
+        lowerPath.contains('live') ||
+        lowerName.contains('channel');
+  }
 
   List<MediaStreamInfo> get subtitleStreams =>
       mediaStreams
@@ -81,12 +97,21 @@ class PlaybackMediaSource {
             .whereType<Map<String, dynamic>>()
             .map(MediaStreamInfo.fromJson)
             .toList();
+    final requiredHttpHeaders =
+        (json['RequiredHttpHeaders'] as Map<String, dynamic>? ??
+                <String, dynamic>{})
+            .map(
+              (key, value) => MapEntry(key.toString(), value.toString()),
+            );
     return PlaybackMediaSource(
       id: json['Id']?.toString() ?? '',
       container: json['Container']?.toString(),
       protocol: json['Protocol']?.toString(),
       name: json['Name']?.toString(),
       path: json['Path']?.toString(),
+      liveStreamId: json['LiveStreamId']?.toString(),
+      isInfiniteStream: json['IsInfiniteStream'] == true,
+      requiredHttpHeaders: requiredHttpHeaders,
       supportsDirectPlay: json['SupportsDirectPlay'] != false,
       supportsDirectStream: json['SupportsDirectStream'] != false,
       supportsTranscoding: json['SupportsTranscoding'] != false,

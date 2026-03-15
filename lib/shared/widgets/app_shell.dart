@@ -19,29 +19,30 @@ class AppShell extends StatelessWidget {
       body: navigationShell,
       bottomNavigationBar: SafeArea(
         top: false,
-        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: <Widget>[
             Flexible(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 560),
+                constraints: const BoxConstraints(maxWidth: 500),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(30),
+                  borderRadius: BorderRadius.circular(32),
                   child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    filter: ImageFilter.blur(sigmaX: 7, sigmaY: 7),
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: mood.navSurface.withValues(alpha: 0.89),
-                        borderRadius: BorderRadius.circular(30),
+                        color: mood.navSurface.withValues(alpha: 0.84),
+                        borderRadius: BorderRadius.circular(32),
                         border: Border.all(
-                          color: mood.navBorder.withValues(alpha: 0.74),
+                          color: mood.navBorder.withValues(alpha: 0.36),
                         ),
                         boxShadow: <BoxShadow>[
                           BoxShadow(
-                            color: mood.appGlow.withValues(alpha: 0.16),
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
+                            color: mood.appGlow.withValues(alpha: 0.12),
+                            blurRadius: 18,
+                            spreadRadius: 1,
+                            offset: const Offset(0, 8),
                           ),
                         ],
                       ),

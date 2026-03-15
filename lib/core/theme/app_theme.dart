@@ -297,6 +297,7 @@ ThemeMood themeMoodOf(BuildContext context) =>
 ThemeData buildNextfinTheme(
   Brightness brightness, {
   required AppThemePalette palette,
+  required LayoutDensity density,
 }) {
   final isDark = brightness == Brightness.dark;
   final selection = paletteFor(palette);
@@ -307,11 +308,32 @@ ThemeData buildNextfinTheme(
     seedColor: seed,
     surface: mood.appBackgroundTop,
   );
-  final textTheme = GoogleFonts.plusJakartaSansTextTheme().apply(
+  final body = GoogleFonts.dmSansTextTheme().apply(
     bodyColor: base.onSurface,
     displayColor: base.onSurface,
   );
-  final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(28));
+  final display = GoogleFonts.soraTextTheme().apply(
+    bodyColor: base.onSurface,
+    displayColor: base.onSurface,
+  );
+  final textTheme = body.copyWith(
+    displayLarge: display.displayLarge,
+    displayMedium: display.displayMedium,
+    displaySmall: display.displaySmall,
+    headlineLarge: display.headlineLarge,
+    headlineMedium: display.headlineMedium,
+    headlineSmall: display.headlineSmall,
+    titleLarge: display.titleLarge,
+  );
+  final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(30));
+  final panel = Color.alphaBlend(
+    seed.withValues(alpha: isDark ? 0.14 : 0.08),
+    mood.cardTint,
+  );
+  final raised = Color.alphaBlend(
+    seed.withValues(alpha: isDark ? 0.24 : 0.16),
+    mood.heroStart,
+  );
 
   return ThemeData(
     useMaterial3: true,
@@ -320,62 +342,103 @@ ThemeData buildNextfinTheme(
     colorScheme: base.copyWith(
       surface: mood.appBackgroundTop,
       surfaceContainerLowest: mood.appBackgroundBottom,
-      surfaceContainerLow: mood.cardTint,
+      surfaceContainerLow: panel,
       surfaceContainer: Color.alphaBlend(
-        seed.withValues(alpha: isDark ? 0.12 : 0.08),
+        seed.withValues(alpha: isDark ? 0.18 : 0.12),
         mood.cardTint,
       ),
-      surfaceContainerHigh: Color.alphaBlend(
-        seed.withValues(alpha: isDark ? 0.18 : 0.12),
-        mood.heroStart,
-      ),
+      surfaceContainerHigh: raised,
       surfaceContainerHighest: Color.alphaBlend(
-        seed.withValues(alpha: isDark ? 0.24 : 0.16),
+        seed.withValues(alpha: isDark ? 0.3 : 0.22),
         mood.heroEnd,
       ),
       outlineVariant: mood.navBorder,
       shadow: Colors.black,
       primaryContainer: Color.alphaBlend(
-        seed.withValues(alpha: isDark ? 0.34 : 0.24),
+        seed.withValues(alpha: isDark ? 0.44 : 0.3),
         mood.heroStart,
       ),
       tertiaryContainer: Color.alphaBlend(
-        seed.withValues(alpha: isDark ? 0.18 : 0.14),
+        seed.withValues(alpha: isDark ? 0.24 : 0.18),
         mood.heroEnd,
       ),
     ),
     textTheme: textTheme.copyWith(
-      headlineLarge: textTheme.headlineLarge?.copyWith(
-        fontWeight: FontWeight.w900,
+      displayLarge: textTheme.displayLarge?.copyWith(
+        fontWeight: FontWeight.w800,
+        letterSpacing: -2.8,
+        height: 0.86,
+      ),
+      displayMedium: textTheme.displayMedium?.copyWith(
+        fontWeight: FontWeight.w800,
+        letterSpacing: -2.2,
+        height: 0.88,
+      ),
+      displaySmall: textTheme.displaySmall?.copyWith(
+        fontWeight: FontWeight.w800,
+        letterSpacing: -1.6,
+        height: 0.9,
+      ),
+      headlineMedium: textTheme.headlineMedium?.copyWith(
+        fontWeight: FontWeight.w800,
         letterSpacing: -1.2,
+      ),
+      headlineLarge: textTheme.headlineLarge?.copyWith(
+        fontWeight: FontWeight.w800,
+        letterSpacing: -1.4,
       ),
       headlineSmall: textTheme.headlineSmall?.copyWith(
         fontWeight: FontWeight.w800,
-        letterSpacing: -0.4,
+        letterSpacing: -0.8,
       ),
-      titleLarge: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+      titleLarge: textTheme.titleLarge?.copyWith(
+        fontWeight: FontWeight.w800,
+        letterSpacing: -0.6,
+      ),
       titleMedium: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+      bodyLarge: textTheme.bodyLarge?.copyWith(height: 1.42),
+      bodyMedium: textTheme.bodyMedium?.copyWith(height: 1.38),
       labelLarge: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
     ),
     scaffoldBackgroundColor: mood.appBackgroundTop,
+    visualDensity:
+        density == LayoutDensity.compact
+            ? const VisualDensity(horizontal: -0.8, vertical: -0.8)
+            : VisualDensity.standard,
     splashFactory: InkSparkle.splashFactory,
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: <TargetPlatform, PageTransitionsBuilder>{
+        TargetPlatform.android: _FastFadePageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.linux: _FastFadePageTransitionsBuilder(),
+        TargetPlatform.windows: _FastFadePageTransitionsBuilder(),
+        TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+      },
+    ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
-      height: 76,
+      height: 72,
       indicatorColor: Color.alphaBlend(
-        seed.withValues(alpha: isDark ? 0.25 : 0.18),
+        seed.withValues(alpha: isDark ? 0.38 : 0.28),
         base.primaryContainer,
       ),
       labelTextStyle: WidgetStatePropertyAll(
-        textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
+        textTheme.labelMedium?.copyWith(
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.1,
+          fontSize: 11.5,
+        ),
       ),
       labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
       iconTheme: WidgetStateProperty.resolveWith((Set<WidgetState> states) {
         final selected = states.contains(WidgetState.selected);
         return IconThemeData(
-          color: selected ? base.onPrimaryContainer : base.onSurfaceVariant,
-          size: selected ? 26 : 24,
+          color:
+              selected
+                  ? base.onPrimaryContainer
+                  : base.onSurfaceVariant.withValues(alpha: 0.84),
+          size: selected ? 22 : 20,
         );
       }),
     ),
@@ -391,7 +454,7 @@ ThemeData buildNextfinTheme(
     ),
     cardTheme: CardThemeData(
       elevation: 0,
-      color: base.surfaceContainerLow,
+      color: base.surfaceContainerLow.withValues(alpha: 0.84),
       shape: shape,
       surfaceTintColor: Colors.transparent,
       margin: EdgeInsets.zero,
@@ -399,23 +462,23 @@ ThemeData buildNextfinTheme(
     ),
     chipTheme: ChipThemeData(
       backgroundColor: Color.alphaBlend(
-        seed.withValues(alpha: isDark ? 0.12 : 0.09),
+        seed.withValues(alpha: isDark ? 0.18 : 0.11),
         base.surfaceContainer,
       ),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      side: BorderSide.none,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      side: BorderSide(color: base.outlineVariant.withValues(alpha: 0.55)),
       labelStyle: textTheme.labelLarge,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
     ),
     bottomSheetTheme: BottomSheetThemeData(
-      backgroundColor: base.surfaceContainerLow,
+      backgroundColor: base.surfaceContainerLow.withValues(alpha: 0.97),
       surfaceTintColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(36)),
       ),
     ),
     dialogTheme: DialogThemeData(
-      backgroundColor: base.surfaceContainerLow,
+      backgroundColor: base.surfaceContainerLow.withValues(alpha: 0.97),
       surfaceTintColor: Colors.transparent,
       shape: shape,
     ),
@@ -425,14 +488,17 @@ ThemeData buildNextfinTheme(
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size(0, 54),
+        minimumSize: const Size(0, 58),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
         textStyle: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+        elevation: 0,
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        minimumSize: const Size(0, 54),
+        minimumSize: const Size(0, 58),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
         side: BorderSide(color: base.outlineVariant),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
         textStyle: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
@@ -441,6 +507,16 @@ ThemeData buildNextfinTheme(
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+    ),
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: ButtonStyle(
+        padding: const WidgetStatePropertyAll<EdgeInsetsGeometry>(
+          EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        ),
+        shape: WidgetStatePropertyAll<RoundedRectangleBorder>(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        ),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
@@ -454,23 +530,63 @@ ThemeData buildNextfinTheme(
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(22),
-        borderSide: BorderSide(color: base.primary, width: 1.4),
+        borderSide: BorderSide(color: base.primary, width: 1.6),
       ),
       filled: true,
       fillColor: Color.alphaBlend(
-        seed.withValues(alpha: isDark ? 0.08 : 0.04),
+        seed.withValues(alpha: isDark ? 0.14 : 0.08),
         base.surface,
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
+      prefixIconColor: base.onSurfaceVariant,
+      hintStyle: textTheme.bodyMedium?.copyWith(
+        color: base.onSurfaceVariant.withValues(alpha: 0.9),
+      ),
     ),
     listTileTheme: ListTileThemeData(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       iconColor: base.primary,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
     ),
     progressIndicatorTheme: ProgressIndicatorThemeData(
       color: base.primary,
       linearTrackColor: base.outlineVariant.withValues(alpha: 0.35),
     ),
+    sliderTheme: SliderThemeData(
+      trackHeight: 4,
+      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+      overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
+      activeTrackColor: base.primary,
+      inactiveTrackColor: base.outlineVariant.withValues(alpha: 0.34),
+    ),
   );
+}
+
+class _FastFadePageTransitionsBuilder extends PageTransitionsBuilder {
+  const _FastFadePageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    return FadeTransition(
+      opacity: CurvedAnimation(
+        parent: animation,
+        curve: const Interval(0, 0.9, curve: Curves.easeOutCubic),
+      ),
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0.015, 0),
+          end: Offset.zero,
+        ).animate(
+          CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+        ),
+        child: child,
+      ),
+    );
+  }
 }

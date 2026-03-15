@@ -3,12 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/networking/jellyfin_api.dart';
-import '../../auth/application/session_controller.dart';
-import '../../home/presentation/home_screen.dart';
 import '../../../shared/models/media_item.dart';
 import '../../../shared/widgets/async_value_widget.dart';
 import '../../../shared/widgets/loading_grid.dart';
 import '../../../shared/widgets/poster_card.dart';
+import '../../auth/application/session_controller.dart';
+import '../../home/presentation/home_screen.dart';
 
 final libraryQueryProvider = StateProvider<String>((Ref ref) => '');
 final selectedLibraryProvider = StateProvider<String?>((Ref ref) => null);
@@ -16,13 +16,26 @@ final selectedLibraryProvider = StateProvider<String?>((Ref ref) => null);
 final libraryItemsProvider = FutureProvider<List<MediaItem>>((Ref ref) async {
   final account = ref.watch(activeAccountProvider);
   if (account == null) throw Exception('No session');
-  return ref
+  final sel = ref.watch(selectedLibraryProvider);
+  final items = await ref
       .watch(jellyfinApiProvider)
       .getLibraryItems(
         account,
-        parentId: ref.watch(selectedLibraryProvider),
+        parentId: sel,
         searchTerm: ref.watch(libraryQueryProvider),
       );
+  if (sel == '__live_tv__') {
+    final favs = ref.watch(
+      sessionControllerProvider.select((s) => s.favoriteLiveChannels),
+    );
+    items.sort((a, b) {
+      final af = favs.contains(a.id) ? 0 : 1;
+      final bf = favs.contains(b.id) ? 0 : 1;
+      if (af != bf) return af.compareTo(bf);
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+  }
+  return items;
 });
 
 class LibraryScreen extends ConsumerWidget {
@@ -39,113 +52,207 @@ class LibraryScreen extends ConsumerWidget {
     );
     final items = ref.watch(libraryItemsProvider);
     final api = ref.watch(jellyfinApiProvider);
+    final sel = ref.watch(selectedLibraryProvider);
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Libraries'),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(88),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 18),
-            child: TextField(
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search),
-                hintText: 'Filter within the current library',
-              ),
-              onChanged: (String value) {
-                ref.read(libraryQueryProvider.notifier).state = value;
-                ref.invalidate(libraryItemsProvider);
-              },
+      body: RefreshIndicator(
+        onRefresh: () => ref.refresh(libraryItemsProvider.future),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1100),
+            child: CustomScrollView(
+              slivers: <Widget>[
+                SliverToBoxAdapter(
+                  child: SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                      child: _LibraryTop(
+                        views: views,
+                        selectedId: sel,
+                        onSelect: (String? value) {
+                          ref.read(selectedLibraryProvider.notifier).state = value;
+                          ref.invalidate(libraryItemsProvider);
+                        },
+                        onQuery: (String value) {
+                          ref.read(libraryQueryProvider.notifier).state = value;
+                          ref.invalidate(libraryItemsProvider);
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 130),
+                    child: AsyncValueWidget(
+                      value: items,
+                      onRetry: () => ref.invalidate(libraryItemsProvider),
+                      loading: const LoadingGrid(count: 10),
+                      builder: (List<MediaItem> data) {
+                        if (data.isEmpty) {
+                          return const _LibraryEmpty();
+                        }
+                        return GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: data.length,
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                childAspectRatio: 0.62,
+                                crossAxisSpacing: 16,
+                                mainAxisSpacing: 20,
+                              ),
+                          itemBuilder: (BuildContext context, int idx) {
+                            final item = data[idx];
+                            return PosterCard(
+                              item: item,
+                              account: account!,
+                              api: api,
+                              onTap: () => context.push('/details/${item.id}'),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
       ),
-      body: RefreshIndicator(
-        onRefresh: () => ref.refresh(libraryItemsProvider.future),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 100),
-          children: <Widget>[
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(
-                  color: Theme.of(context).colorScheme.outlineVariant,
+    );
+  }
+}
+
+class _LibraryTop extends StatelessWidget {
+  const _LibraryTop({
+    required this.views,
+    required this.selectedId,
+    required this.onSelect,
+    required this.onQuery,
+  });
+
+  final List<MediaItem> views;
+  final String? selectedId;
+  final ValueChanged<String?> onSelect;
+  final ValueChanged<String> onQuery;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          'Libraries',
+          style: theme.textTheme.headlineMedium?.copyWith(
+            fontWeight: FontWeight.w900,
+            height: 0.95,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'browse the shelves on your server without digging through menus',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 18),
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface.withValues(alpha: 0.74),
+            borderRadius: BorderRadius.circular(34),
+            border: Border.all(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.34),
+            ),
+          ),
+          child: Column(
+            children: <Widget>[
+              TextField(
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search_rounded),
+                  hintText: 'filter the current library',
+                ),
+                onChanged: onQuery,
+              ),
+              const SizedBox(height: 14),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: <Widget>[
+                    FilterChip(
+                      label: const Text('All'),
+                      selected: selectedId == null,
+                      onSelected: (_) => onSelect(null),
+                    ),
+                    ...views.map(
+                      (MediaItem view) => FilterChip(
+                        label: Text(view.name),
+                        selected: selectedId == view.id,
+                        onSelected:
+                            (_) => onSelect(selectedId == view.id ? null : view.id),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    'Library filters',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 44,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemBuilder: (BuildContext context, int index) {
-                        final selected =
-                            ref.watch(selectedLibraryProvider) ==
-                            views[index].id;
-                        return FilterChip(
-                          label: Text(views[index].name),
-                          selected: selected,
-                          onSelected: (_) {
-                            ref.read(selectedLibraryProvider.notifier).state =
-                                selected ? null : views[index].id;
-                            ref.invalidate(libraryItemsProvider);
-                          },
-                        );
-                      },
-                      separatorBuilder: (_, __) => const SizedBox(width: 8),
-                      itemCount: views.length,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-            AsyncValueWidget(
-              value: items,
-              onRetry: () => ref.invalidate(libraryItemsProvider),
-              loading: const LoadingGrid(count: 10),
-              builder: (data) {
-                if (data.isEmpty) {
-                  return const Card(
-                    child: Padding(
-                      padding: EdgeInsets.all(20),
-                      child: Text(
-                        'No media matched the current library and filters.',
-                      ),
-                    ),
-                  );
-                }
-                return GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: data.length,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    childAspectRatio: 0.62,
-                    crossAxisSpacing: 16,
-                    mainAxisSpacing: 16,
-                  ),
-                  itemBuilder:
-                      (BuildContext context, int index) => PosterCard(
-                        item: data[index],
-                        account: account!,
-                        api: api,
-                        onTap: () => context.push('/details/${data[index].id}'),
-                      ),
-                );
-              },
-            ),
-          ],
+            ],
+          ),
         ),
+      ],
+    );
+  }
+}
+
+class _LibraryEmpty extends StatelessWidget {
+  const _LibraryEmpty();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(32),
+      ),
+      child: Column(
+        children: <Widget>[
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: Icon(
+              Icons.video_library_outlined,
+              color: theme.colorScheme.primary,
+              size: 30,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No matching media',
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'try another library or clear the current filter',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
       ),
     );
   }

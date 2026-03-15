@@ -15,251 +15,253 @@ class ThemesScreen extends ConsumerWidget {
     final mood = themeMoodOf(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Themes')),
       body: DecoratedBox(
         decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: const Alignment(0.72, -0.95),
-            radius: 1.08,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: <Color>[
-              mood.appGlow.withValues(alpha: 0.42),
-              Colors.transparent,
+              mood.appBackgroundTop,
+              Color.alphaBlend(
+                mood.appGlow.withValues(alpha: 0.16),
+                mood.appBackgroundBottom,
+              ),
             ],
           ),
         ),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-          children: <Widget>[
-            Text(
-              'Colors',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              paletteFor(sett.themePalette).name,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 18),
-            _ThemePreview(palette: sett.themePalette, themeMode: mode),
-            const SizedBox(height: 22),
-            SizedBox(
-              height: 86,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: themePalettes.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
-                itemBuilder: (BuildContext context, int index) {
-                  final palette = themePalettes[index];
-                  final selected = palette.id == sett.themePalette;
-                  final activeMood =
-                      mode == ThemeMode.light
-                          ? palette.lightMood
-                          : palette.darkMood;
-                  return InkWell(
-                    onTap:
-                        () => ctrl.update(
-                          sett.copyWith(themePalette: palette.id),
-                        ),
-                    borderRadius: BorderRadius.circular(24),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      width: 164,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(24),
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: <Color>[
-                            activeMood.previewTop,
-                            activeMood.previewBottom,
-                          ],
-                        ),
-                        border: Border.all(
-                          color:
-                              selected
-                                  ? Theme.of(context).colorScheme.onSurface
-                                  : activeMood.navBorder.withValues(
-                                    alpha: 0.82,
-                                  ),
-                          width: selected ? 1.8 : 1,
-                        ),
-                        boxShadow: <BoxShadow>[
-                          BoxShadow(
-                            color: activeMood.appGlow.withValues(alpha: 0.28),
-                            blurRadius: 20,
-                            offset: const Offset(0, 12),
-                          ),
-                        ],
-                      ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1100),
+            child: CustomScrollView(
+              slivers: <Widget>[
+                SliverToBoxAdapter(
+                  child: SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
                       child: Row(
                         children: <Widget>[
-                          ...<Color>[
-                            palette.lightSeed,
-                            palette.darkSeed,
-                            activeMood.navSurface,
-                          ].map(
-                            (Color color) => Container(
-                              width: 15,
-                              height: 15,
-                              margin: const EdgeInsets.only(right: 6),
-                              decoration: BoxDecoration(
-                                color: color,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
+                          IconButton.filledTonal(
+                            onPressed: () => Navigator.of(context).maybePop(),
+                            icon: const Icon(Icons.arrow_back_rounded),
                           ),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 12),
                           Expanded(
-                            child: Text(
-                              palette.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.end,
-                              style: Theme.of(context).textTheme.titleSmall
-                                  ?.copyWith(fontWeight: FontWeight.w900),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  'Themes',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineMedium
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w900,
+                                        height: 0.95,
+                                      ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  paletteFor(sett.themePalette).name,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodyMedium
+                                      ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurfaceVariant,
+                                      ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          if (selected)
-                            Icon(
-                              Icons.check_circle_rounded,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
                         ],
                       ),
                     ),
-                  );
-                },
-              ),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 22, 20, 130),
+                    child: Column(
+                      children: <Widget>[
+                        _ThemeLabPreview(
+                          palette: sett.themePalette,
+                          mode: mode,
+                        ),
+                        const SizedBox(height: 20),
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: themePalettes.length,
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                childAspectRatio: 1.45,
+                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 12,
+                              ),
+                          itemBuilder: (BuildContext context, int idx) {
+                            final item = themePalettes[idx];
+                            final selected = item.id == sett.themePalette;
+                            final activeMood =
+                                mode == ThemeMode.light
+                                    ? item.lightMood
+                                    : item.darkMood;
+                            return InkWell(
+                              onTap:
+                                  () => ctrl.update(
+                                    sett.copyWith(themePalette: item.id),
+                                  ),
+                              borderRadius: BorderRadius.circular(30),
+                              child: Ink(
+                                padding: const EdgeInsets.all(18),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(30),
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: <Color>[
+                                      activeMood.previewTop,
+                                      activeMood.previewBottom,
+                                    ],
+                                  ),
+                                  border: Border.all(
+                                    color:
+                                        selected
+                                            ? Theme.of(context)
+                                                .colorScheme
+                                                .onSurface
+                                            : activeMood.navBorder.withValues(
+                                              alpha: 0.66,
+                                            ),
+                                    width: selected ? 2 : 1,
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Row(
+                                      children: <Widget>[
+                                        ...<Color>[
+                                          item.lightSeed,
+                                          item.darkSeed,
+                                          activeMood.navSurface,
+                                        ].map(
+                                          (Color color) => Container(
+                                            width: 16,
+                                            height: 16,
+                                            margin: const EdgeInsets.only(right: 6),
+                                            decoration: BoxDecoration(
+                                              color: color,
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                        ),
+                                        const Spacer(),
+                                        if (selected)
+                                          Icon(
+                                            Icons.check_circle_rounded,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary,
+                                          ),
+                                      ],
+                                    ),
+                                    const Spacer(),
+                                    Text(
+                                      item.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleLarge
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _ThemePreview extends StatelessWidget {
-  const _ThemePreview({required this.palette, required this.themeMode});
+class _ThemeLabPreview extends StatelessWidget {
+  const _ThemeLabPreview({required this.palette, required this.mode});
 
   final AppThemePalette palette;
-  final ThemeMode themeMode;
+  final ThemeMode mode;
 
   @override
   Widget build(BuildContext context) {
     final brightness =
-        themeMode == ThemeMode.light ? Brightness.light : Brightness.dark;
-    final paletteDefinition = paletteFor(palette);
-    final previewTheme = buildNextfinTheme(brightness, palette: palette);
-    final mood =
-        brightness == Brightness.light
-            ? paletteDefinition.lightMood
-            : paletteDefinition.darkMood;
+        mode == ThemeMode.light ? Brightness.light : Brightness.dark;
+    final def = paletteFor(palette);
+    final mood = brightness == Brightness.light ? def.lightMood : def.darkMood;
+    final previewTheme = buildNextfinTheme(
+      brightness,
+      palette: palette,
+      density: LayoutDensity.comfortable,
+    );
     final scheme = previewTheme.colorScheme;
 
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(34),
+        borderRadius: BorderRadius.circular(38),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: <Color>[mood.previewTop, mood.previewBottom],
         ),
-        border: Border.all(color: mood.navBorder.withValues(alpha: 0.78)),
-        boxShadow: <BoxShadow>[
-          BoxShadow(
-            color: mood.appGlow.withValues(alpha: 0.28),
-            blurRadius: 30,
-            offset: const Offset(0, 18),
-          ),
-        ],
+        border: Border.all(color: mood.navBorder.withValues(alpha: 0.74)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Row(
             children: <Widget>[
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: scheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(16),
+              Expanded(
+                child: Text(
+                  def.name,
+                  style: previewTheme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
-                child: Icon(Icons.palette_rounded, color: scheme.primary),
               ),
-              const SizedBox(width: 12),
-              Text(
-                paletteDefinition.name,
-                style: previewTheme.textTheme.titleLarge?.copyWith(
-                  color: scheme.onSurface,
-                  fontWeight: FontWeight.w900,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: mood.navSurface,
+                  borderRadius: BorderRadius.circular(999),
                 ),
+                child: const Text('preview'),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: scheme.surfaceContainerLow.withValues(alpha: 0.92),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: mood.navBorder),
+              borderRadius: BorderRadius.circular(30),
             ),
             child: Column(
               children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Container(
-                      width: 36,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: scheme.primaryContainer,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Icon(
-                        Icons.play_circle_fill_rounded,
-                        color: scheme.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Nextfin',
-                        style: previewTheme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w900,
-                          color: scheme.onSurface,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: mood.navSurface,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        'av',
-                        style: previewTheme.textTheme.labelLarge?.copyWith(
-                          color: scheme.onSurface,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
                 Container(
-                  height: 112,
+                  height: 70,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(24),
                     gradient: LinearGradient(
@@ -271,17 +273,14 @@ class _ThemePreview extends StatelessWidget {
                 ),
                 const SizedBox(height: 14),
                 Row(
-                  children: List<Widget>.generate(3, (int index) {
+                  children: List<Widget>.generate(3, (int idx) {
                     return Expanded(
                       child: Container(
-                        height: 118,
-                        margin: EdgeInsets.only(right: index == 2 ? 0 : 10),
+                        height: 120,
+                        margin: EdgeInsets.only(right: idx == 2 ? 0 : 10),
                         decoration: BoxDecoration(
                           color: scheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(
-                            color: mood.navBorder.withValues(alpha: 0.55),
-                          ),
+                          borderRadius: BorderRadius.circular(24),
                         ),
                       ),
                     );
@@ -291,11 +290,10 @@ class _ThemePreview extends StatelessWidget {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(999),
                   child: LinearProgressIndicator(
-                    value: 0.42,
-                    minHeight: 5,
-                    backgroundColor: scheme.outlineVariant.withValues(
-                      alpha: 0.4,
-                    ),
+                    value: 0.44,
+                    minHeight: 6,
+                    backgroundColor:
+                        scheme.outlineVariant.withValues(alpha: 0.34),
                     valueColor: AlwaysStoppedAnimation<Color>(scheme.primary),
                   ),
                 ),

@@ -11,6 +11,7 @@ import '../../shared/models/search_results.dart';
 import '../../shared/models/server_account.dart';
 import '../compatibility/compatibility.dart';
 import '../error/app_exception.dart';
+import '../storage/app_storage.dart';
 
 class AuthResult {
   const AuthResult({required this.account, required this.user});
@@ -22,21 +23,27 @@ class AuthResult {
 class HomeSections {
   const HomeSections({
     required this.views,
+    required this.pinnedItems,
     required this.resumeItems,
     required this.latestItems,
     required this.latestMovies,
     required this.latestShows,
     required this.recentlyPlayed,
+    required this.recentLiveChannels,
+    required this.favoriteLiveChannels,
     required this.nextUpItems,
     required this.favorites,
   });
 
   final List<MediaItem> views;
+  final List<MediaItem> pinnedItems;
   final List<MediaItem> resumeItems;
   final List<MediaItem> latestItems;
   final List<MediaItem> latestMovies;
   final List<MediaItem> latestShows;
   final List<MediaItem> recentlyPlayed;
+  final List<MediaItem> recentLiveChannels;
+  final List<MediaItem> favoriteLiveChannels;
   final List<MediaItem> nextUpItems;
   final List<MediaItem> favorites;
 }
@@ -87,75 +94,148 @@ class JellyfinApi {
     return normalized;
   }
 
+  List<String> candidateServerUrls(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) {
+      throw const NetworkException('Enter your Jellyfin server URL.');
+    }
+    final hasScheme =
+        trimmed.startsWith('http://') || trimmed.startsWith('https://');
+    if (hasScheme) {
+      return <String>[normalizeServerUrl(trimmed)];
+    }
+    final https = normalizeServerUrl('https://$trimmed');
+    final http = normalizeServerUrl('http://$trimmed');
+    return <String>[https, http];
+  }
+
   Future<AuthResult> authenticate({
     required String serverUrl,
     required String username,
     required String password,
   }) async {
-    final baseUrl = normalizeServerUrl(serverUrl);
-    final publicInfo = await _getMap(baseUrl, '/System/Info/Public');
-
-    final response = await _dio.post<Map<String, dynamic>>(
-      '$baseUrl/Users/AuthenticateByName',
-      data: <String, dynamic>{'Username': username, 'Pw': password},
-      options: Options(
-        headers: <String, dynamic>{'X-Emby-Authorization': _authHeader()},
-      ),
-    );
-
-    if (response.statusCode != 200 || response.data == null) {
-      throw const AuthenticationException(
-        'Login failed. Check your credentials.',
+    final urls = candidateServerUrls(serverUrl);
+    AppException? lastError;
+    for (final baseUrl in urls) {
+      try {
+        return await _authenticateAtBaseUrl(
+          baseUrl: baseUrl,
+          username: username,
+          password: password,
+        );
+      } on AppException catch (error) {
+        lastError = error;
+        if (kDebugMode) {
+          debugPrint('Nextfin login: candidate failed baseUrl=$baseUrl error=$error');
+        }
+      }
+    }
+    if (urls.length > 1) {
+      throw NetworkException(
+        'Could not reach the server over https or http. Try entering the full server URL.',
+        details: lastError?.message,
       );
     }
-
-    final data = response.data!;
-    final user = JellyfinUser.fromJson(
-      data['User'] as Map<String, dynamic>? ?? <String, dynamic>{},
-    );
-    final accessToken = data['AccessToken']?.toString();
-
-    if (user.id.isEmpty || accessToken == null || accessToken.isEmpty) {
-      throw const AuthenticationException(
-        'Server returned an incomplete session.',
-      );
-    }
-
-    final endpointAvailability = await _probeEndpoints(
-      baseUrl,
-      accessToken,
-      user.id,
-    );
-    final systemInfo = await _getMap(
-      baseUrl,
-      '/System/Info',
-      token: accessToken,
-    ).catchError((Object _) => publicInfo);
-
-    final capabilities = _compatibility.infer(
-      systemInfo: systemInfo,
-      endpointAvailability: endpointAvailability,
-    );
-
-    final serverName =
-        systemInfo['ServerName']?.toString() ??
-        publicInfo['ServerName']?.toString() ??
-        Uri.parse(baseUrl).host;
-
-    final account = ServerAccount(
-      id: '$baseUrl::${user.id}',
-      serverUrl: baseUrl,
-      serverName: serverName,
-      userId: user.id,
-      username: user.name,
-      accessToken: accessToken,
-      capabilities: capabilities,
-    );
-
-    return AuthResult(account: account, user: user);
+    throw lastError ??
+        const NetworkException('Could not reach the server. Check the address and try again.');
   }
 
-  Future<HomeSections> loadHome(ServerAccount account) async {
+  Future<AuthResult> _authenticateAtBaseUrl({
+    required String baseUrl,
+    required String username,
+    required String password,
+  }) async {
+    try {
+      if (kDebugMode) {
+        debugPrint('Nextfin login: trying baseUrl=$baseUrl');
+        debugPrint(
+          'Nextfin login: public info endpoint=$baseUrl/System/Info/Public',
+        );
+      }
+      final publicInfo = await _getMap(baseUrl, '/System/Info/Public');
+
+      final response = await _dio.post<Map<String, dynamic>>(
+        '$baseUrl/Users/AuthenticateByName',
+        data: <String, dynamic>{'Username': username, 'Pw': password},
+        options: Options(
+          headers: <String, dynamic>{'X-Emby-Authorization': _authHeader()},
+        ),
+      );
+      if (kDebugMode) {
+        debugPrint(
+          'Nextfin login: auth endpoint=$baseUrl/Users/AuthenticateByName status=${response.statusCode}',
+        );
+      }
+
+      if (response.statusCode == 401) {
+        throw const AuthenticationException(
+          'Authentication failed. Check your username and password.',
+        );
+      }
+      if (response.statusCode != 200 || response.data == null) {
+        throw NetworkException(
+          'Login failed. The server returned HTTP ${response.statusCode}.',
+          code: '${response.statusCode}',
+        );
+      }
+
+      final data = response.data!;
+      final user = JellyfinUser.fromJson(
+        data['User'] as Map<String, dynamic>? ?? <String, dynamic>{},
+      );
+      final accessToken = data['AccessToken']?.toString();
+
+      if (user.id.isEmpty || accessToken == null || accessToken.isEmpty) {
+        throw const AuthenticationException(
+          'Server returned an incomplete session.',
+        );
+      }
+
+      final endpointAvailability = await _probeEndpoints(
+        baseUrl,
+        accessToken,
+        user.id,
+      );
+      final systemInfo = await _getMap(
+        baseUrl,
+        '/System/Info',
+        token: accessToken,
+      ).catchError((Object _) => publicInfo);
+
+      final capabilities = _compatibility.infer(
+        systemInfo: systemInfo,
+        endpointAvailability: endpointAvailability,
+      );
+
+      final serverName =
+          systemInfo['ServerName']?.toString() ??
+          publicInfo['ServerName']?.toString() ??
+          Uri.parse(baseUrl).host;
+
+      final account = ServerAccount(
+        id: '$baseUrl::${user.id}',
+        serverUrl: baseUrl,
+        serverName: serverName,
+        userId: user.id,
+        username: user.name,
+        accessToken: accessToken,
+        capabilities: capabilities,
+      );
+
+      return AuthResult(account: account, user: user);
+    } on DioException catch (error) {
+      throw _mapDioError(error);
+    } on SocketException catch (error) {
+      throw NetworkException('Could not reach the server.', details: error);
+    }
+  }
+
+  Future<HomeSections> loadHome(
+    ServerAccount account, {
+    List<String> recentLiveIds = const <String>[],
+    List<String> favoriteLiveIds = const <String>[],
+    List<String> pinnedIds = const <String>[],
+  }) async {
     final views = await getUserViews(account);
     final futures =
         await Future.wait<List<MediaItem>>(<Future<List<MediaItem>>>[
@@ -170,13 +250,32 @@ class JellyfinApi {
             getLatestEpisodes(account),
           getFavoriteItems(account),
         ]);
+    final liveRecent =
+        recentLiveIds.isEmpty
+            ? <MediaItem>[]
+            : await getItemsByIds(account, recentLiveIds);
+    final liveFavs =
+        favoriteLiveIds.isEmpty
+            ? <MediaItem>[]
+            : await getItemsByIds(account, favoriteLiveIds);
+    final pinned =
+        pinnedIds.isEmpty ? <MediaItem>[] : await getItemsByIds(account, pinnedIds);
+    final recentMerged = <MediaItem>[
+      ...liveRecent,
+      ...futures[4].where(
+        (item) => !liveRecent.any((live) => live.id == item.id),
+      ),
+    ];
     return HomeSections(
       views: views,
+      pinnedItems: pinned,
       resumeItems: futures[0],
       latestItems: futures[1],
       latestMovies: futures[2],
       latestShows: futures[3],
-      recentlyPlayed: futures[4],
+      recentlyPlayed: recentMerged,
+      recentLiveChannels: liveRecent,
+      favoriteLiveChannels: liveFavs,
       nextUpItems: futures[5],
       favorites: futures[6],
     );
@@ -316,11 +415,57 @@ class JellyfinApi {
     return _readItems(response);
   }
 
+  Future<List<MediaItem>> getItemsByIds(
+    ServerAccount account,
+    List<String> ids,
+  ) async {
+    if (ids.isEmpty) return <MediaItem>[];
+    final response = await _getMap(
+      account.serverUrl,
+      '/Users/${account.userId}/Items',
+      token: account.accessToken,
+      query: <String, dynamic>{
+        'Ids': ids.join(','),
+        'Fields': _itemFields,
+      },
+    );
+    final items = _readItems(response);
+    items.sort(
+      (a, b) => ids.indexOf(a.id).compareTo(ids.indexOf(b.id)),
+    );
+    return items;
+  }
+
+  Future<List<MediaItem>> getLiveTvChannels(
+    ServerAccount account, {
+    String? searchTerm,
+  }) async {
+    final response = await _getMap(
+      account.serverUrl,
+      '/LiveTv/Channels',
+      token: account.accessToken,
+      query: <String, dynamic>{
+        'UserId': account.userId,
+        'Fields': _itemFields,
+        'EnableFavoriteSorting': true,
+      },
+    );
+    final items = _readItems(response);
+    final query = searchTerm?.trim().toLowerCase() ?? '';
+    if (query.isEmpty) return items;
+    return items
+        .where((item) => item.name.toLowerCase().contains(query))
+        .toList();
+  }
+
   Future<List<MediaItem>> getLibraryItems(
     ServerAccount account, {
     String? parentId,
     String? searchTerm,
   }) async {
+    if (parentId == '__live_tv__') {
+      return getLiveTvChannels(account, searchTerm: searchTerm);
+    }
     final response = await _getMap(
       account.serverUrl,
       '/Users/${account.userId}/Items',
@@ -498,8 +643,20 @@ class JellyfinApi {
   Future<PlaybackInfo> getPlaybackInfo(
     ServerAccount account,
     String itemId,
-  ) async {
+    {
+    StreamingQuality quality = StreamingQuality.auto,
+    PlaybackPreference pref = PlaybackPreference.auto,
+  }) async {
     final fallbackUrl = masterStreamUrl(account, itemId);
+    final bitrate = switch (quality) {
+      StreamingQuality.dataSaver => 4000000,
+      StreamingQuality.balanced => 12000000,
+      StreamingQuality.max => 80000000,
+      StreamingQuality.auto => 24000000,
+    };
+    final enableDirectPlay = pref != PlaybackPreference.transcode;
+    final enableDirectStream = pref != PlaybackPreference.transcode;
+    final enableTranscoding = pref != PlaybackPreference.directPlay;
     if (kDebugMode) {
       debugPrint(
         'Nextfin playback: item=$itemId playback info request started',
@@ -522,12 +679,12 @@ class JellyfinApi {
       data: <String, dynamic>{
         'UserId': account.userId,
         'AutoOpenLiveStream': true,
-        'EnableDirectPlay': true,
-        'EnableDirectStream': true,
-        'EnableTranscoding': true,
+        'EnableDirectPlay': enableDirectPlay,
+        'EnableDirectStream': enableDirectStream,
+        'EnableTranscoding': enableTranscoding,
         'DeviceProfile': <String, dynamic>{
           'Name': 'Nextfin',
-          'MaxStreamingBitrate': 120000000,
+          'MaxStreamingBitrate': bitrate,
           'DirectPlayProfiles': <Map<String, dynamic>>[
             <String, dynamic>{'Type': 'Video'},
             <String, dynamic>{'Type': 'Audio'},
@@ -578,7 +735,7 @@ class JellyfinApi {
       );
       for (final source in info.mediaSources) {
         debugPrint(
-          'Nextfin playback: source id=${source.id} container=${source.container} protocol=${source.protocol} directPlay=${source.supportsDirectPlay} directStream=${source.supportsDirectStream} transcode=${source.supportsTranscoding}',
+          'Nextfin playback: source id=${source.id} container=${source.container} protocol=${source.protocol} directPlay=${source.supportsDirectPlay} directStream=${source.supportsDirectStream} transcode=${source.supportsTranscoding} live=${source.isLiveTvLike}',
         );
       }
     }
@@ -612,10 +769,18 @@ class JellyfinApi {
         .toString();
   }
 
+  String resolveMediaSourcePath(ServerAccount account, String path) {
+    final uri = Uri.tryParse(path);
+    if (uri == null) return path;
+    if (uri.hasScheme) return path;
+    return _resolvePlaybackUrl(account, path);
+  }
+
   List<PlaybackCandidate> playbackCandidates(
     ServerAccount account,
     String itemId, {
     required PlaybackInfo playbackInfo,
+    PlaybackPreference pref = PlaybackPreference.auto,
     int? audioStreamIndex,
     int? subtitleStreamIndex,
   }) {
@@ -625,55 +790,84 @@ class JellyfinApi {
         playbackInfo.mediaSources.isEmpty
             ? <PlaybackMediaSource?>[null]
             : (List<PlaybackMediaSource>.from(playbackInfo.mediaSources)
-              ..sort(_playbackSourcePriority));
+              ..sort(
+                (PlaybackMediaSource a, PlaybackMediaSource b) =>
+                    _playbackSourcePriority(a, b, pref),
+              ));
 
     void addCandidate({
       required String url,
       required String kind,
       PlaybackMediaSource? source,
+      Map<String, String> headers = const <String, String>{},
     }) {
       if (url.isEmpty || !seen.add(url)) return;
-      candidates.add(PlaybackCandidate(url: url, kind: kind, source: source));
+      candidates.add(
+        PlaybackCandidate(
+          url: url,
+          kind: kind,
+          source: source,
+          headers: headers,
+        ),
+      );
     }
 
     for (final source in sources) {
+      final liveLike = source?.isLiveTvLike == true;
+      final reqHeaders = source?.requiredHttpHeaders ?? const <String, String>{};
       final transcodingUrl = source?.transcodingUrl;
-      if (source?.supportsTranscoding == true &&
-          transcodingUrl != null &&
-          transcodingUrl.isNotEmpty) {
+      final sourceDirectStreamUrl = source?.directStreamUrl;
+      final sourcePath = source?.path;
+      if (liveLike &&
+          sourcePath != null &&
+          sourcePath.isNotEmpty &&
+          !sourcePath.contains('/Videos/$itemId/stream')) {
         addCandidate(
-          url: _resolvePlaybackUrl(account, transcodingUrl),
-          kind: 'transcode',
+          url: resolveMediaSourcePath(account, sourcePath),
+          kind: 'live-path',
           source: source,
+          headers: reqHeaders,
         );
       }
-      final sourceDirectStreamUrl = source?.directStreamUrl;
       if (source?.supportsDirectStream == true &&
           sourceDirectStreamUrl != null &&
           sourceDirectStreamUrl.isNotEmpty) {
         addCandidate(
           url: _resolvePlaybackUrl(account, sourceDirectStreamUrl),
-          kind: 'direct',
+          kind: liveLike ? 'live-direct' : 'direct',
           source: source,
+          headers: reqHeaders,
+        );
+      }
+      if (source?.supportsTranscoding == true &&
+          transcodingUrl != null &&
+          transcodingUrl.isNotEmpty) {
+        addCandidate(
+          url: _resolvePlaybackUrl(account, transcodingUrl),
+          kind: liveLike ? 'live-transcode' : 'transcode',
+          source: source,
+          headers: reqHeaders,
         );
       }
       addCandidate(
-        url: directStreamUrl(account, itemId, mediaSourceId: source?.id),
-        kind: source == null ? 'fallback-direct' : 'direct-endpoint',
+        url: masterStreamUrl(
+          account,
+          itemId,
+          mediaSourceId: source?.id,
+          playSessionId: playbackInfo.playSessionId,
+          audioStreamIndex: audioStreamIndex,
+          subtitleStreamIndex: subtitleStreamIndex,
+        ),
+        kind: liveLike ? 'live-master' : 'master',
         source: source,
+        headers: reqHeaders,
       );
-      if (source == null) {
+      if (!liveLike) {
         addCandidate(
-          url: masterStreamUrl(
-            account,
-            itemId,
-            mediaSourceId: source?.id,
-            playSessionId: playbackInfo.playSessionId,
-            audioStreamIndex: audioStreamIndex,
-            subtitleStreamIndex: subtitleStreamIndex,
-          ),
-          kind: 'master',
+          url: directStreamUrl(account, itemId, mediaSourceId: source?.id),
+          kind: source == null ? 'fallback-direct' : 'direct-endpoint',
           source: source,
+          headers: reqHeaders,
         );
       }
     }
@@ -727,6 +921,10 @@ class JellyfinApi {
     return uri.toString();
   }
 
+  String downloadUrl(ServerAccount account, String itemId) {
+    return directStreamUrl(account, itemId);
+  }
+
   Map<String, String> playerHeaders(ServerAccount account) => <String, String>{
     'X-Emby-Token': account.accessToken,
   };
@@ -735,12 +933,14 @@ class JellyfinApi {
     ServerAccount account,
     String url, {
     required bool expectText,
+    Map<String, String> extraHeaders = const <String, String>{},
   }) async {
     final response = await _dio.getUri<dynamic>(
       Uri.parse(url),
       options: Options(
         headers: <String, dynamic>{
           ...playerHeaders(account),
+          ...extraHeaders,
           if (!expectText) 'Range': 'bytes=0-1023',
         },
         followRedirects: false,
@@ -919,6 +1119,11 @@ class JellyfinApi {
         throw const AuthenticationException('Session expired. Sign in again.');
       }
       if (response.statusCode != 200 || response.data == null) {
+        if (kDebugMode) {
+          debugPrint(
+            'Nextfin request failed: path=$path status=${response.statusCode}',
+          );
+        }
         throw NetworkException(
           'Request failed for $path',
           code: '${response.statusCode}',
@@ -975,9 +1180,35 @@ class JellyfinApi {
   }
 
   AppException _mapDioError(DioException error) {
+    final details = error.error?.toString() ?? error.message;
     if (error.type == DioExceptionType.connectionTimeout ||
         error.type == DioExceptionType.receiveTimeout) {
       return const NetworkException('The server timed out. Try again.');
+    }
+    if (error.type == DioExceptionType.connectionError) {
+      final msg = details?.toLowerCase() ?? '';
+      if (msg.contains('cleartext') || msg.contains('clear text')) {
+        return NetworkException(
+          'Android blocked a cleartext HTTP connection. Make sure the server uses http:// or https:// correctly.',
+          details: details,
+        );
+      }
+      if (msg.contains('failed host lookup') || msg.contains('name or service not known')) {
+        return NetworkException(
+          'Could not resolve that server address.',
+          details: details,
+        );
+      }
+      if (msg.contains('connection refused')) {
+        return NetworkException(
+          'The server refused the connection. Check the host and port.',
+          details: details,
+        );
+      }
+      return NetworkException(
+        'Could not reach the server.',
+        details: details,
+      );
     }
     if (error.response?.statusCode == 401) {
       return const AuthenticationException('Authentication failed.');
@@ -995,7 +1226,7 @@ class JellyfinApi {
     return NetworkException(
       'Network request failed.',
       code: error.response?.statusCode?.toString(),
-      details: error.message,
+      details: details,
     );
   }
 
@@ -1017,7 +1248,7 @@ class JellyfinApi {
   }
 
   static const String _itemFields =
-      'Overview,Genres,PrimaryImageAspectRatio,Path,BackdropImageTags,ParentBackdropImageTags,PrimaryImageTag,ChildCount,CommunityRating,CriticRating,RunTimeTicks,MediaSources';
+      'Overview,Genres,PrimaryImageAspectRatio,Path,BackdropImageTags,ParentBackdropImageTags,PrimaryImageTag,ChildCount,CommunityRating,CriticRating,RunTimeTicks,MediaSources,SeriesId,SeriesName,ParentIndexNumber,IndexNumber,PrimaryImageItemId';
 
   String resolvePlaybackReference(
     ServerAccount account,
@@ -1032,23 +1263,50 @@ class JellyfinApi {
     return resolved.replace(queryParameters: query).toString();
   }
 
-  int _playbackSourcePriority(PlaybackMediaSource? a, PlaybackMediaSource? b) {
+  int _playbackSourcePriority(
+    PlaybackMediaSource? a,
+    PlaybackMediaSource? b,
+    PlaybackPreference pref,
+  ) {
     if (a == null || b == null) return 0;
-    final scoreA = _playbackSourceScore(a);
-    final scoreB = _playbackSourceScore(b);
+    final scoreA = _playbackSourceScore(a, pref);
+    final scoreB = _playbackSourceScore(b, pref);
     return scoreB.compareTo(scoreA);
   }
 
-  int _playbackSourceScore(PlaybackMediaSource source) {
+  int _playbackSourceScore(
+    PlaybackMediaSource source,
+    PlaybackPreference pref,
+  ) {
     var score = 0;
+    if (source.isLiveTvLike) score += 40;
+    if (source.supportsDirectPlay) score += 30;
+    if (source.supportsDirectStream && source.directStreamUrl?.isNotEmpty == true) {
+      score += 24;
+    }
     if (source.supportsTranscoding &&
         source.transcodingUrl?.isNotEmpty == true) {
-      score += 50;
+      score += 16;
     }
-    if (source.transcodingUrl?.contains('.mp4') == true) score += 18;
-    if (source.transcodingUrl?.contains('.m3u8') == true) score -= 8;
+    if (pref == PlaybackPreference.transcode &&
+        source.supportsTranscoding &&
+        source.transcodingUrl?.isNotEmpty == true) {
+      score += 42;
+    }
+    if (pref == PlaybackPreference.directPlay && source.supportsDirectPlay) {
+      score += 44;
+    }
+    if (pref == PlaybackPreference.directPlay && source.supportsDirectStream) {
+      score += 32;
+    }
+    if (source.isLiveTvLike && source.transcodingUrl?.contains('.m3u8') == true) {
+      score += 30;
+    }
+    if (source.transcodingUrl?.contains('.mp4') == true) score += 8;
+    if (source.transcodingUrl?.contains('.m3u8') == true && !source.isLiveTvLike) {
+      score -= 8;
+    }
     if (source.protocol?.toLowerCase() == 'file') score += 5;
-    if (source.supportsDirectPlay) score += 8;
     if (source.container case final String container) {
       if (<String>{
         'mp4',
@@ -1068,12 +1326,16 @@ class PlaybackCandidate {
     required this.url,
     required this.kind,
     required this.source,
+    required this.headers,
   });
 
   final String url;
   final String kind;
   final PlaybackMediaSource? source;
+  final Map<String, String> headers;
 
   bool get isHls =>
       source?.protocol?.toLowerCase() == 'hls' || url.contains('.m3u8');
+
+  bool get isLive => source?.isLiveTvLike == true;
 }

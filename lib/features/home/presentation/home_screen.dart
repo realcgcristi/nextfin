@@ -4,12 +4,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/networking/jellyfin_api.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../auth/application/session_controller.dart';
+import '../../../shared/models/media_item.dart';
 import '../../../shared/models/server_account.dart';
 import '../../../shared/widgets/async_value_widget.dart';
 import '../../../shared/widgets/loading_grid.dart';
 import '../../../shared/widgets/poster_card.dart';
-import '../../../shared/widgets/section_block.dart';
+import '../../auth/application/session_controller.dart';
 
 final activeAccountProvider = Provider<ServerAccount?>(
   (Ref ref) => ref.watch(sessionControllerProvider).activeAccount,
@@ -18,7 +18,18 @@ final activeAccountProvider = Provider<ServerAccount?>(
 final homeSectionsProvider = FutureProvider<HomeSections>((Ref ref) async {
   final account = ref.watch(activeAccountProvider);
   if (account == null) throw Exception('No active session.');
-  return ref.watch(jellyfinApiProvider).loadHome(account);
+  final recentLiveIds =
+      ref.watch(sessionControllerProvider.select((s) => s.recentLiveChannels));
+  final favoriteLiveIds =
+      ref.watch(sessionControllerProvider.select((s) => s.favoriteLiveChannels));
+  final pinnedIds =
+      ref.watch(sessionControllerProvider.select((s) => s.pinnedItems));
+  return ref.watch(jellyfinApiProvider).loadHome(
+    account,
+    recentLiveIds: recentLiveIds,
+    favoriteLiveIds: favoriteLiveIds,
+    pinnedIds: pinnedIds,
+  );
 });
 
 class HomeScreen extends ConsumerWidget {
@@ -26,199 +37,127 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final account = ref.watch(activeAccountProvider);
+    final acc = ref.watch(activeAccountProvider);
     final api = ref.watch(jellyfinApiProvider);
-    final sections = ref.watch(homeSectionsProvider);
+    final data = ref.watch(homeSectionsProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        titleSpacing: 20,
-        title: Text(
-          'Nextfin',
-          style: Theme.of(
-            context,
-          ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-        ),
-        actions: <Widget>[
-          Padding(
-            padding: const EdgeInsets.only(right: 20, top: 8, bottom: 8),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(999),
-              onTap: () => context.go('/settings'),
-              child: Ink(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.surfaceContainerLow.withValues(alpha: 0.78),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.outlineVariant.withValues(alpha: 0.7),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: <Widget>[
-                    Container(
-                      width: 26,
-                      height: 26,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primaryContainer,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.person_rounded,
-                        size: 16,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      account?.username ?? '',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        height: 1,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      size: 18,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
       body: RefreshIndicator(
         onRefresh: () => ref.refresh(homeSectionsProvider.future),
         child: AsyncValueWidget(
-          value: sections,
+          value: data,
           onRetry: () => ref.invalidate(homeSectionsProvider),
           loading: const Padding(
             padding: EdgeInsets.all(20),
-            child: LoadingGrid(),
+            child: LoadingGrid(count: 6),
           ),
-          builder: (data) {
-            final activeAccount = account!;
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
-              children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Expanded(
-                      child: Text(
-                        activeAccount.serverName,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
+          builder: (HomeSections sections) {
+            final account = acc!;
+            return CustomScrollView(
+              slivers: <Widget>[
+                SliverToBoxAdapter(
+                  child: SafeArea(
+                    bottom: false,
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 1100),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                          child: _HomeTop(
+                            account: account,
+                            onProfile: () => context.go('/settings'),
+                          ),
                         ),
                       ),
                     ),
-                    Text(
-                      'Pull to refresh',
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1100),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+                        child: _HomeHero(
+                          account: account,
+                          resumeCount: sections.resumeItems.length,
+                          onSearch: () => context.go('/search'),
+                          onBrowse: () => context.go('/libraries'),
+                        ),
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _HeroPanel(account: account),
-                const SizedBox(height: 10),
-                SectionBlock(
-                  title: 'Continue Watching',
-                  subtitle: 'Pick up exactly where you left off',
-                  child: _HorizontalRail(
-                    items: data.resumeItems,
-                    account: activeAccount,
-                    api: api,
                   ),
                 ),
-                SectionBlock(
-                  title: 'Recently Added',
-                  subtitle: 'Fresh additions across your whole server',
-                  child: _HorizontalRail(
-                    items: data.latestItems,
-                    account: activeAccount,
-                    api: api,
-                  ),
-                ),
-                SectionBlock(
-                  title: 'Latest Movies',
-                  subtitle: 'Recently added films ready to watch',
-                  child: _HorizontalRail(
-                    items: data.latestMovies,
-                    account: activeAccount,
-                    api: api,
-                  ),
-                ),
-                SectionBlock(
-                  title: 'Latest Shows',
-                  subtitle: 'Fresh series and returning favorites',
-                  child: _HorizontalRail(
-                    items: data.latestShows,
-                    account: activeAccount,
-                    api: api,
-                  ),
-                ),
-                SectionBlock(
-                  title: 'Recently Played',
-                  subtitle: 'Quick return to titles you finished or sampled',
-                  child: _HorizontalRail(
-                    items: data.recentlyPlayed,
-                    account: activeAccount,
-                    api: api,
-                  ),
-                ),
-                SectionBlock(
-                  title: 'Next Up',
-                  subtitle:
-                      activeAccount.capabilities.supportsNextUp
-                          ? 'Personalized picks from your in-progress shows'
-                          : 'Fallback mode for servers without Next Up',
-                  child: _HorizontalRail(
-                    items: data.nextUpItems,
-                    account: activeAccount,
-                    api: api,
-                  ),
-                ),
-                SectionBlock(
-                  title: 'Libraries',
-                  subtitle: 'Jump into the major spaces on this server',
-                  child: Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children:
-                        data.views
-                            .map(
-                              (item) => ActionChip(
-                                label: Text(item.name),
-                                avatar: const Icon(Icons.folder_outlined),
-                                onPressed:
-                                    () => context.go(
-                                      '/libraries?parent=${item.id}',
-                                    ),
-                              ),
-                            )
-                            .toList(),
-                  ),
-                ),
-                SectionBlock(
-                  title: 'Favorites',
-                  subtitle: 'Shortcuts to the titles you care about',
-                  child: _HorizontalRail(
-                    items: data.favorites,
-                    account: activeAccount,
-                    api: api,
+                SliverToBoxAdapter(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1100),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 24, 20, 130),
+                        child: Column(
+                          children: <Widget>[
+                            _HomeRail(
+                              title: 'Continue watching',
+                              subtitle: 'pick up where you stopped',
+                              items: sections.resumeItems,
+                              account: account,
+                              api: api,
+                              emphasized: true,
+                            ),
+                            _HomeRail(
+                              title: 'Recently added',
+                              subtitle: 'fresh from your server',
+                              items: sections.latestItems,
+                              account: account,
+                              api: api,
+                            ),
+                            _HomeGridSection(
+                              title: 'Libraries',
+                              subtitle: 'jump straight into the big shelves',
+                              views: sections.views,
+                            ),
+                            _HomeRail(
+                              title: 'Movies',
+                              subtitle: 'new films ready to queue up',
+                              items: sections.latestMovies,
+                              account: account,
+                              api: api,
+                            ),
+                            _HomeRail(
+                              title: 'Shows',
+                              subtitle: 'series and returning favorites',
+                              items: sections.latestShows,
+                              account: account,
+                              api: api,
+                            ),
+                            _HomeRail(
+                              title: 'Recent',
+                              subtitle: 'what you touched lately',
+                              items: sections.recentlyPlayed,
+                              account: account,
+                              api: api,
+                            ),
+                            _HomeRail(
+                              title: 'For you',
+                              subtitle:
+                                  account.capabilities.supportsNextUp
+                                      ? 'next up from active shows'
+                                      : 'fallback picks from your server',
+                              items: sections.nextUpItems,
+                              account: account,
+                              api: api,
+                            ),
+                            _HomeRail(
+                              title: 'Favorites',
+                              subtitle: 'your shortcuts',
+                              items: sections.favorites,
+                              account: account,
+                              api: api,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -230,19 +169,66 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
-class _HeroPanel extends StatelessWidget {
-  const _HeroPanel({required this.account});
+class _HomeTop extends StatelessWidget {
+  const _HomeTop({required this.account, required this.onProfile});
 
-  final ServerAccount? account;
+  final ServerAccount account;
+  final VoidCallback onProfile;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'nextfin',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  letterSpacing: 1.6,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Your server',
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  height: 0.94,
+                ),
+              ),
+            ],
+          ),
+        ),
+        _ProfileDock(account: account, onTap: onProfile),
+      ],
+    );
+  }
+}
+
+class _HomeHero extends StatelessWidget {
+  const _HomeHero({
+    required this.account,
+    required this.resumeCount,
+    required this.onSearch,
+    required this.onBrowse,
+  });
+
+  final ServerAccount account;
+  final int resumeCount;
+  final VoidCallback onSearch;
+  final VoidCallback onBrowse;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final mood = themeMoodOf(context);
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(40),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -251,8 +237,8 @@ class _HeroPanel extends StatelessWidget {
         boxShadow: <BoxShadow>[
           BoxShadow(
             color: mood.appGlow.withValues(alpha: 0.18),
-            blurRadius: 26,
-            offset: const Offset(0, 14),
+            blurRadius: 40,
+            offset: const Offset(0, 24),
           ),
         ],
       ),
@@ -261,77 +247,40 @@ class _HeroPanel extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface.withValues(alpha: 0.7),
-                  borderRadius: BorderRadius.circular(18),
+              Expanded(
+                child: Text(
+                  account.serverName,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    height: 0.98,
+                  ),
                 ),
-                child: Icon(
-                  Icons.play_circle_fill_rounded,
-                  color: theme.colorScheme.primary,
-                  size: 28,
+              ),
+              _TinyPill(label: 'jellyfin ${account.capabilities.version}'),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'signed in as ${account.username}',
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 22),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _HeroMetric(
+                  label: 'ready now',
+                  value: '$resumeCount',
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      'Connected',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(
-                      account?.serverName ?? 'Jellyfin server',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
+                child: _HeroMetric(
+                  label: 'server',
+                  value: account.serverUrl.replaceFirst('https://', '').replaceFirst('http://', ''),
                 ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface.withValues(alpha: 0.64),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  account?.username ?? 'Guest',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'Your libraries, continue watching, and recommendations are ready.',
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              height: 1.35,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: <Widget>[
-              _HeroChip(
-                icon: Icons.cloud_done_outlined,
-                label: account?.serverUrl.replaceFirst('https://', '') ?? '',
-              ),
-              _HeroChip(
-                icon: Icons.tune_rounded,
-                label: 'Jellyfin ${account?.capabilities.version ?? 'unknown'}',
               ),
             ],
           ),
@@ -340,17 +289,17 @@ class _HeroPanel extends StatelessWidget {
             children: <Widget>[
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: () => GoRouter.of(context).go('/search'),
+                  onPressed: onSearch,
                   icon: const Icon(Icons.search_rounded),
                   label: const Text('Search'),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => GoRouter.of(context).go('/libraries'),
+                  onPressed: onBrowse,
                   icon: const Icon(Icons.grid_view_rounded),
-                  label: const Text('Browse libraries'),
+                  label: const Text('Browse'),
                 ),
               ),
             ],
@@ -361,74 +310,300 @@ class _HeroPanel extends StatelessWidget {
   }
 }
 
-class _HeroChip extends StatelessWidget {
-  const _HeroChip({required this.icon, required this.label});
+class _HomeRail extends StatelessWidget {
+  const _HomeRail({
+    required this.title,
+    required this.subtitle,
+    required this.items,
+    required this.account,
+    required this.api,
+    this.emphasized = false,
+  });
 
-  final IconData icon;
-  final String label;
+  final String title;
+  final String subtitle;
+  final List<MediaItem> items;
+  final ServerAccount account;
+  final JellyfinApi api;
+  final bool emphasized;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withValues(alpha: 0.52),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 26),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(icon, size: 16),
-          const SizedBox(width: 8),
-          Text(label, style: theme.textTheme.labelLarge),
+          Text(
+            title,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (items.isEmpty)
+            _EmptyCard(message: 'nothing here yet')
+          else
+            SizedBox(
+              height: emphasized ? 336 : 296,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: items.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 14),
+                itemBuilder: (BuildContext context, int idx) {
+                  final item = items[idx];
+                  return SizedBox(
+                    width: emphasized ? 188 : 156,
+                    child: PosterCard(
+                      item: item,
+                      account: account,
+                      api: api,
+                      compact: !emphasized,
+                      onTap: () => context.push('/details/${item.id}'),
+                    ),
+                  );
+                },
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-class _HorizontalRail extends StatelessWidget {
-  const _HorizontalRail({
-    required this.items,
-    required this.account,
-    required this.api,
+class _HomeGridSection extends StatelessWidget {
+  const _HomeGridSection({
+    required this.title,
+    required this.subtitle,
+    required this.views,
   });
 
-  final List<dynamic> items;
-  final ServerAccount account;
-  final JellyfinApi api;
+  final String title;
+  final String subtitle;
+  final List<MediaItem> views;
 
   @override
   Widget build(BuildContext context) {
-    if (items.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Text(
-            'Nothing here yet. As the server provides more data, this row fills in automatically.',
-            style: Theme.of(context).textTheme.bodyMedium,
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            title,
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 14),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: views.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              childAspectRatio: 1.4,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+            ),
+            itemBuilder: (BuildContext context, int idx) {
+              final item = views[idx];
+              return InkWell(
+                onTap: () => context.go('/libraries?parent=${item.id}'),
+                borderRadius: BorderRadius.circular(28),
+                child: Ink(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerLow.withValues(
+                      alpha: 0.9,
+                    ),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: theme.colorScheme.outlineVariant.withValues(
+                        alpha: 0.4,
+                      ),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Icon(
+                          Icons.folder_outlined,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        item.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileDock extends StatelessWidget {
+  const _ProfileDock({required this.account, required this.onTap});
+
+  final ServerAccount account;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Ink(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface.withValues(alpha: 0.72),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.44),
           ),
         ),
-      );
-    }
-    return SizedBox(
-      height: 292,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 14),
-        itemBuilder:
-            (BuildContext context, int index) => SizedBox(
-              width: 150,
-              child: PosterCard(
-                item: items[index],
-                account: account,
-                api: api,
-                onTap: () => context.push('/details/${items[index].id}'),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primaryContainer,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.person_rounded,
+                size: 16,
+                color: theme.colorScheme.primary,
               ),
             ),
+            const SizedBox(width: 8),
+            Text(
+              account.username,
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+class _HeroMetric extends StatelessWidget {
+  const _HeroMetric({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.54),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            label,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TinyPill extends StatelessWidget {
+  const _TinyPill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.58),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyCard extends StatelessWidget {
+  const _EmptyCard({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Text(message),
     );
   }
 }

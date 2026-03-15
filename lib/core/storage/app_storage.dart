@@ -197,6 +197,10 @@ class AppStorage {
   static const _activeAccountIdKey = 'active_account_id';
   static const _themeModeKey = 'theme_mode';
   static const _recentSearchesKey = 'recent_searches';
+  static const _recentLiveChannelsKey = 'recent_live_channels';
+  static const _favoriteLiveChannelsKey = 'favorite_live_channels';
+  static const _pinnedItemsKey = 'pinned_items';
+  static const _downloadsKey = 'downloads';
   static const _clientSettingsKey = 'client_settings';
 
   List<ServerAccount> loadAccounts() {
@@ -251,6 +255,47 @@ class AppStorage {
 
   Future<void> saveRecentSearches(List<String> values) async {
     await _prefs.setStringList(_recentSearchesKey, values.take(8).toList());
+  }
+
+  List<String> loadRecentLiveChannels() =>
+      _prefs.getStringList(_recentLiveChannelsKey) ?? <String>[];
+
+  Future<void> saveRecentLiveChannels(List<String> values) async {
+    await _prefs.setStringList(
+      _recentLiveChannelsKey,
+      values.take(8).toList(),
+    );
+  }
+
+  List<String> loadFavoriteLiveChannels() =>
+      _prefs.getStringList(_favoriteLiveChannelsKey) ?? <String>[];
+
+  Future<void> saveFavoriteLiveChannels(List<String> values) async {
+    await _prefs.setStringList(
+      _favoriteLiveChannelsKey,
+      values.take(200).toList(),
+    );
+  }
+
+  List<String> loadPinnedItems() =>
+      _prefs.getStringList(_pinnedItemsKey) ?? <String>[];
+
+  Future<void> savePinnedItems(List<String> values) async {
+    await _prefs.setStringList(_pinnedItemsKey, values.take(100).toList());
+  }
+
+  List<Map<String, dynamic>> loadDownloads() {
+    final raw = _prefs.getStringList(_downloadsKey) ?? <String>[];
+    return raw
+        .map((entry) => jsonDecode(entry) as Map<String, dynamic>)
+        .toList();
+  }
+
+  Future<void> saveDownloads(List<Map<String, dynamic>> entries) async {
+    await _prefs.setStringList(
+      _downloadsKey,
+      entries.map((entry) => jsonEncode(entry)).toList(),
+    );
   }
 
   ClientSettings loadClientSettings() {

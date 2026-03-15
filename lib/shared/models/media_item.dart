@@ -47,16 +47,64 @@ class MediaItem {
   final String? primaryImageItemId;
   final String? seriesId;
 
+  String get displayType => switch (type) {
+    'Movie' => 'movie',
+    'Series' => 'show',
+    'Season' => 'season',
+    'Episode' => 'episode',
+    'TvChannel' => 'live',
+    'CollectionFolder' => 'collection',
+    'Folder' => 'library',
+    'ManualPlaylistsFolder' => 'playlist',
+    'Playlist' => 'playlist',
+    'MusicAlbum' => 'album',
+    'Audio' => 'track',
+    'Person' => 'person',
+    _ => type.toLowerCase(),
+  };
+
   String get subtitle {
     return switch (type) {
-      'Movie' => year?.toString() ?? 'Movie',
-      'Series' => '${childCount ?? 0} seasons',
-      'Season' => 'Season ${indexNumber ?? ''}'.trim(),
-      'Episode' => seriesName ?? 'Episode',
-      'MusicAlbum' => albumArtist ?? 'Album',
-      'Audio' => albumArtist ?? 'Track',
-      _ => type,
+      'Movie' => year?.toString() ?? 'movie',
+      'Series' => childCount == 1 ? '1 season' : '${childCount ?? 0} seasons',
+      'Season' => 'season ${indexNumber ?? ''}'.trim(),
+      'Episode' => _episodeLabel,
+      'TvChannel' => 'channel',
+      'CollectionFolder' => 'collection',
+      'Folder' => 'library',
+      'ManualPlaylistsFolder' => 'playlist',
+      'MusicAlbum' => albumArtist ?? 'album',
+      'Audio' => albumArtist ?? 'track',
+      _ => displayType,
     };
+  }
+
+  String get _episodeLabel {
+    final parts = <String>[];
+    if (parentIndexNumber != null) {
+      final ep = indexNumber?.toString().padLeft(2, '0');
+      parts.add('s${parentIndexNumber!.toString().padLeft(2, '0')}${ep == null ? '' : 'e$ep'}');
+    } else if (indexNumber != null) {
+      parts.add('ep ${indexNumber!}');
+    }
+    if (seriesName?.isNotEmpty == true) parts.add(seriesName!);
+    return parts.isEmpty ? 'episode' : parts.join('  ·  ');
+  }
+
+  double? get progress {
+    if (runtimeTicks == null || runtimeTicks == 0) return null;
+    return (playbackPositionTicks / runtimeTicks!).clamp(0.0, 1.0).toDouble();
+  }
+
+  String? get progressLabel {
+    final p = progress;
+    if (p == null || p <= 0) return null;
+    final leftTicks = runtimeTicks! - playbackPositionTicks;
+    if (leftTicks > 0) {
+      final mins = Duration(microseconds: leftTicks ~/ 10).inMinutes;
+      if (mins > 0) return '${mins}m left';
+    }
+    return '${(p * 100).round()}% watched';
   }
 
   factory MediaItem.fromJson(Map<String, dynamic> json) {

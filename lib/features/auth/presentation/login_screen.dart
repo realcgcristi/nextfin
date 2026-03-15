@@ -1,6 +1,10 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/error/app_exception.dart';
+import '../../../core/theme/app_theme.dart';
 import '../application/session_controller.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -12,39 +16,47 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _serverController = TextEditingController();
-  final _usernameController = TextEditingController();
-  final _passwordController = TextEditingController();
-  bool _submitting = false;
-  String? _error;
+  final _serverCtrl = TextEditingController();
+  final _userCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
+  bool _busy = false;
+  String? _err;
 
   @override
   void dispose() {
-    _serverController.dispose();
-    _usernameController.dispose();
-    _passwordController.dispose();
+    _serverCtrl.dispose();
+    _userCtrl.dispose();
+    _passCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    final sett = ref.read(clientSettingsProvider);
+    final raw = _serverCtrl.text.trim();
+    if (!sett.allowHttpServers && raw.startsWith('http://')) {
+      setState(() => _err = 'http servers are disabled in settings');
+      return;
+    }
     setState(() {
-      _submitting = true;
-      _error = null;
+      _busy = true;
+      _err = null;
     });
     try {
       await ref
           .read(sessionControllerProvider.notifier)
           .login(
-            serverUrl: _serverController.text,
-            username: _usernameController.text,
-            password: _passwordController.text,
+            serverUrl: _serverCtrl.text,
+            username: _userCtrl.text,
+            password: _passCtrl.text,
           );
-    } catch (error) {
-      setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
+    } on AppException catch (e) {
+      setState(() => _err = e.message);
+    } catch (e) {
+      setState(() => _err = e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) {
-        setState(() => _submitting = false);
+        setState(() => _busy = false);
       }
     }
   }
@@ -53,275 +65,508 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final session = ref.watch(sessionControllerProvider);
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final mood = themeMoodOf(context);
+
     return Scaffold(
-      body: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: <Color>[
-              theme.colorScheme.primaryContainer,
-              theme.colorScheme.surface,
-              theme.colorScheme.tertiaryContainer.withValues(alpha: 0.45),
+      body: Stack(
+        children: <Widget>[
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: <Color>[mood.appBackgroundTop, mood.appBackgroundBottom],
+              ),
+            ),
+            child: const SizedBox.expand(),
+          ),
+          Positioned(
+            top: -120,
+            left: -50,
+            child: IgnorePointer(
+              child: Container(
+                width: 280,
+                height: 280,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: mood.appGlow.withValues(alpha: 0.34),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            right: -80,
+            bottom: -30,
+            child: IgnorePointer(
+              child: Container(
+                width: 260,
+                height: 260,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: scheme.primary.withValues(alpha: 0.14),
+                ),
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1180),
+                child: LayoutBuilder(
+                  builder: (BuildContext context, BoxConstraints c) {
+                    final wide = c.maxWidth >= 920;
+                    return ListView(
+                      padding: EdgeInsets.fromLTRB(
+                        wide ? 28 : 20,
+                        18,
+                        wide ? 28 : 20,
+                        28,
+                      ),
+                      children: <Widget>[
+                        wide
+                            ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Expanded(
+                                  flex: 6,
+                                  child: _HeroPanel(
+                                    hasSaved: session.accounts.isNotEmpty,
+                                  ),
+                                ),
+                                const SizedBox(width: 20),
+                                Expanded(
+                                  flex: 5,
+                                  child: Column(
+                                    children: <Widget>[
+                                      _FormPanel(
+                                        formKey: _formKey,
+                                        serverCtrl: _serverCtrl,
+                                        userCtrl: _userCtrl,
+                                        passCtrl: _passCtrl,
+                                        busy: _busy,
+                                        err: _err,
+                                        onSubmit: _submit,
+                                      ),
+                                      if (session.accounts.isNotEmpty) ...<Widget>[
+                                        const SizedBox(height: 18),
+                                        _SavedPanel(
+                                          session: session,
+                                          onUse:
+                                              (String id) => ref
+                                                  .read(
+                                                    sessionControllerProvider
+                                                        .notifier,
+                                                  )
+                                                  .switchAccount(id),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            )
+                            : Column(
+                              children: <Widget>[
+                                const _HeroPanel(hasSaved: false),
+                                const SizedBox(height: 16),
+                                _FormPanel(
+                                  formKey: _formKey,
+                                  serverCtrl: _serverCtrl,
+                                  userCtrl: _userCtrl,
+                                  passCtrl: _passCtrl,
+                                  busy: _busy,
+                                  err: _err,
+                                  onSubmit: _submit,
+                                ),
+                                if (session.accounts.isNotEmpty) ...<Widget>[
+                                  const SizedBox(height: 16),
+                                  _SavedPanel(
+                                    session: session,
+                                    onUse:
+                                        (String id) => ref
+                                            .read(
+                                              sessionControllerProvider.notifier,
+                                            )
+                                            .switchAccount(id),
+                                  ),
+                                ],
+                              ],
+                            ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroPanel extends StatelessWidget {
+  const _HeroPanel({required this.hasSaved});
+
+  final bool hasSaved;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final mood = themeMoodOf(context);
+    return Container(
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(40),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            mood.heroStart.withValues(alpha: 0.96),
+            mood.heroEnd.withValues(alpha: 0.94),
+          ],
+        ),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.28),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Container(
+                width: 62,
+                height: 62,
+                decoration: BoxDecoration(
+                  color: scheme.surface.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: Icon(
+                  Icons.play_circle_fill_rounded,
+                  size: 36,
+                  color: scheme.primary,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: scheme.surface.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  hasSaved ? 'pick a session or sign in' : 'connect to jellyfin',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
             ],
           ),
+          const SizedBox(height: 34),
+          Text(
+            'welcome to nextfin',
+            style: theme.textTheme.labelLarge?.copyWith(
+              letterSpacing: 1.2,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'your server\nin a better shell',
+            style: theme.textTheme.displaySmall?.copyWith(
+              fontWeight: FontWeight.w900,
+              height: 0.92,
+              letterSpacing: -1.4,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'sign in once then keep movies shows and progress in one clean place',
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 28),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: const <Widget>[
+              _MiniLine(icon: Icons.play_arrow_rounded, text: 'resume playback'),
+              _MiniLine(icon: Icons.search_rounded, text: 'search everything'),
+              _MiniLine(icon: Icons.palette_outlined, text: 'theme it your way'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniLine extends StatelessWidget {
+  const _MiniLine({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.44),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 18),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: theme.textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FormPanel extends StatelessWidget {
+  const _FormPanel({
+    required this.formKey,
+    required this.serverCtrl,
+    required this.userCtrl,
+    required this.passCtrl,
+    required this.busy,
+    required this.err,
+    required this.onSubmit,
+  });
+
+  final GlobalKey<FormState> formKey;
+  final TextEditingController serverCtrl;
+  final TextEditingController userCtrl;
+  final TextEditingController passCtrl;
+  final bool busy;
+  final String? err;
+  final Future<void> Function() onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(38),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: Container(
+          padding: const EdgeInsets.all(26),
+          decoration: BoxDecoration(
+            color: scheme.surface.withValues(alpha: 0.8),
+            borderRadius: BorderRadius.circular(38),
+            border: Border.all(
+              color: scheme.outlineVariant.withValues(alpha: 0.3),
+            ),
+          ),
+          child: Form(
+            key: formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  'connect to your server',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'server address username and password',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                TextFormField(
+                  controller: serverCtrl,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: 'server',
+                    hintText: 'jellyfin.example.com or 192.168.1.2:8096',
+                    prefixIcon: Icon(Icons.dns_rounded),
+                  ),
+                  validator:
+                      (String? v) =>
+                          (v == null || v.trim().isEmpty) ? 'enter a server' : null,
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: userCtrl,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: 'username',
+                    prefixIcon: Icon(Icons.person_rounded),
+                  ),
+                  validator:
+                      (String? v) =>
+                          (v == null || v.trim().isEmpty) ? 'enter a username' : null,
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: passCtrl,
+                  obscureText: true,
+                  onFieldSubmitted: (_) => busy ? null : onSubmit(),
+                  decoration: const InputDecoration(
+                    labelText: 'password',
+                    prefixIcon: Icon(Icons.lock_rounded),
+                  ),
+                  validator:
+                      (String? v) => (v == null || v.isEmpty) ? 'enter a password' : null,
+                ),
+                if (err != null) ...<Widget>[
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: scheme.errorContainer,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Text(
+                      err!,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: scheme.onErrorContainer,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 18),
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: busy ? null : onSubmit,
+                        icon:
+                            busy
+                                ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                                : const Icon(Icons.arrow_forward_rounded),
+                        label: Text(busy ? 'connecting' : 'continue'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
-        child: SafeArea(
-          child: Stack(
-            children: <Widget>[
-              Positioned(
-                top: -80,
-                right: -40,
-                child: Container(
-                  width: 240,
-                  height: 240,
+      ),
+    );
+  }
+}
+
+class _SavedPanel extends StatelessWidget {
+  const _SavedPanel({required this.session, required this.onUse});
+
+  final dynamic session;
+  final ValueChanged<String> onUse;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: scheme.surface.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(34),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.28),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'saved sessions',
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 14),
+          ...session.accounts.map(
+            (acc) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: InkWell(
+                onTap: () => onUse(acc.id),
+                borderRadius: BorderRadius.circular(24),
+                child: Ink(
+                  padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: theme.colorScheme.primary.withValues(alpha: 0.08),
+                    color: scheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(24),
                   ),
-                ),
-              ),
-              Positioned(
-                left: -70,
-                bottom: 40,
-                child: Container(
-                  width: 220,
-                  height: 220,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: theme.colorScheme.tertiary.withValues(alpha: 0.08),
-                  ),
-                ),
-              ),
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 560),
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                  child: Row(
                     children: <Widget>[
                       Container(
-                        width: 84,
-                        height: 84,
+                        width: 42,
+                        height: 42,
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.surface.withValues(
-                            alpha: 0.78,
-                          ),
-                          borderRadius: BorderRadius.circular(28),
-                          boxShadow: <BoxShadow>[
-                            BoxShadow(
-                              color: theme.colorScheme.primary.withValues(
-                                alpha: 0.12,
-                              ),
-                              blurRadius: 24,
-                              offset: const Offset(0, 14),
-                            ),
-                          ],
+                          color: scheme.primaryContainer,
+                          borderRadius: BorderRadius.circular(14),
                         ),
                         child: Icon(
-                          Icons.play_circle_fill_rounded,
-                          color: theme.colorScheme.primary,
-                          size: 48,
+                          Icons.cloud_done_rounded,
+                          color: scheme.primary,
                         ),
                       ),
-                      const SizedBox(height: 22),
-                      Text(
-                        'Welcome to Nextfin',
-                        style: theme.textTheme.displaySmall?.copyWith(
-                          fontWeight: FontWeight.w900,
-                          height: 0.98,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      Container(
-                        padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.surface.withValues(
-                            alpha: 0.82,
-                          ),
-                          borderRadius: BorderRadius.circular(30),
-                          border: Border.all(
-                            color: theme.colorScheme.outlineVariant.withValues(
-                              alpha: 0.36,
-                            ),
-                          ),
-                        ),
+                      const SizedBox(width: 12),
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
                             Text(
-                              'Connect to your server',
-                              style: theme.textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.w900,
+                              acc.serverName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 3),
                             Text(
-                              'Sign in with your Jellyfin server URL and account.',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            Form(
-                              key: _formKey,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: <Widget>[
-                                  TextFormField(
-                                    controller: _serverController,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Server URL',
-                                      hintText: 'https://jellyfin.example.com',
-                                      prefixIcon: Icon(Icons.dns_rounded),
-                                    ),
-                                    validator:
-                                        (String? value) =>
-                                            (value == null ||
-                                                    value.trim().isEmpty)
-                                                ? 'Enter a server URL.'
-                                                : null,
-                                  ),
-                                  const SizedBox(height: 14),
-                                  TextFormField(
-                                    controller: _usernameController,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Username',
-                                      prefixIcon: Icon(Icons.person_rounded),
-                                    ),
-                                    validator:
-                                        (String? value) =>
-                                            (value == null ||
-                                                    value.trim().isEmpty)
-                                                ? 'Enter your username.'
-                                                : null,
-                                  ),
-                                  const SizedBox(height: 14),
-                                  TextFormField(
-                                    controller: _passwordController,
-                                    obscureText: true,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Password',
-                                      prefixIcon: Icon(Icons.lock_rounded),
-                                    ),
-                                    validator:
-                                        (String? value) =>
-                                            (value == null || value.isEmpty)
-                                                ? 'Enter your password.'
-                                                : null,
-                                  ),
-                                  if (_error != null) ...<Widget>[
-                                    const SizedBox(height: 14),
-                                    Container(
-                                      width: double.infinity,
-                                      padding: const EdgeInsets.all(14),
-                                      decoration: BoxDecoration(
-                                        color: theme.colorScheme.errorContainer,
-                                        borderRadius: BorderRadius.circular(18),
-                                      ),
-                                      child: Text(
-                                        _error!,
-                                        style: TextStyle(
-                                          color:
-                                              theme
-                                                  .colorScheme
-                                                  .onErrorContainer,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                  const SizedBox(height: 20),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: FilledButton.icon(
-                                      onPressed: _submitting ? null : _submit,
-                                      icon:
-                                          _submitting
-                                              ? const SizedBox(
-                                                height: 16,
-                                                width: 16,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                    ),
-                                              )
-                                              : const Icon(Icons.login_rounded),
-                                      label: const Text('Connect to Jellyfin'),
-                                    ),
-                                  ),
-                                ],
+                              '${acc.username}  ·  ${acc.serverUrl}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      if (session.accounts.isNotEmpty) ...<Widget>[
-                        const SizedBox(height: 16),
-                        Container(
-                          padding: const EdgeInsets.all(18),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.surface.withValues(
-                              alpha: 0.74,
-                            ),
-                            borderRadius: BorderRadius.circular(28),
-                            border: Border.all(
-                              color: theme.colorScheme.outlineVariant
-                                  .withValues(alpha: 0.28),
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: <Widget>[
-                              Text(
-                                'Saved sessions',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              ...session.accounts.map(
-                                (account) => Card(
-                                  margin: const EdgeInsets.only(bottom: 10),
-                                  child: ListTile(
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 18,
-                                      vertical: 8,
-                                    ),
-                                    leading: CircleAvatar(
-                                      backgroundColor:
-                                          theme.colorScheme.primaryContainer,
-                                      child: Icon(
-                                        Icons.cloud_done_rounded,
-                                        color: theme.colorScheme.primary,
-                                      ),
-                                    ),
-                                    title: Text(account.serverName),
-                                    subtitle: Text(
-                                      '${account.username} • ${account.serverUrl}',
-                                    ),
-                                    trailing: FilledButton.tonal(
-                                      onPressed:
-                                          () => ref
-                                              .read(
-                                                sessionControllerProvider
-                                                    .notifier,
-                                              )
-                                              .switchAccount(account.id),
-                                      child: const Text('Use'),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                      const SizedBox(width: 8),
+                      const Icon(Icons.arrow_forward_rounded),
                     ],
                   ),
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
